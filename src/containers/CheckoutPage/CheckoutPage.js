@@ -7,7 +7,12 @@ import { withRouter } from 'react-router-dom';
 import classNames from 'classnames';
 import routeConfiguration from '../../routeConfiguration';
 import { pathByRouteName, findRouteByRouteName } from '../../util/routes';
-import { propTypes, LINE_ITEM_NIGHT, LINE_ITEM_DAY } from '../../util/types';
+import {
+  propTypes,
+  LINE_ITEM_NIGHT,
+  LINE_ITEM_DAY,
+  LINE_ITEM_CLEANING_FEE,
+} from '../../util/types';
 import { ensureListing, ensureUser, ensureTransaction, ensureBooking } from '../../util/data';
 import { dateFromLocalToAPI } from '../../util/dates';
 import { createSlug } from '../../util/urlHelpers';
@@ -76,7 +81,7 @@ export class CheckoutPageComponent extends Component {
    * @return a params object for custom pricing bookings
    */
   customPricingParams(params) {
-    const { bookingStart, bookingEnd, listing, ...rest } = params;
+    const { bookingStart, bookingEnd, listing, cleaningFee, ...rest } = params;
     const { amount, currency } = listing.attributes.price;
 
     const unitType = config.bookingUnitType;
@@ -86,11 +91,22 @@ export class CheckoutPageComponent extends Component {
       ? nightsBetween(bookingStart, bookingEnd)
       : daysBetween(bookingStart, bookingEnd);
 
+    const cleaningFeeLineItem = cleaningFee
+      ? {
+          code: LINE_ITEM_CLEANING_FEE,
+          unitPrice: cleaningFee,
+          quantity: 1,
+        }
+      : null;
+
+    const cleaningFeeLineItemMaybe = cleaningFeeLineItem ? [cleaningFeeLineItem] : [];
+
     return {
       listingId: listing.id,
       bookingStart,
       bookingEnd,
       lineItems: [
+        ...cleaningFeeLineItemMaybe,
         {
           code: unitType,
           unitPrice: new Money(amount, currency),
@@ -160,10 +176,13 @@ export class CheckoutPageComponent extends Component {
       const bookingStartForAPI = dateFromLocalToAPI(bookingStart);
       const bookingEndForAPI = dateFromLocalToAPI(bookingEnd);
 
+      const cleaningFee = pageData.bookingData.cleaningFee;
+
       const requestParams = this.customPricingParams({
         listing,
         bookingStart: bookingStartForAPI,
         bookingEnd: bookingEndForAPI,
+        cleaningFee,
       });
 
       // Fetch speculated transaction for showing price in booking breakdown
@@ -183,6 +202,7 @@ export class CheckoutPageComponent extends Component {
 
     const cardToken = values.token;
     const initialMessage = values.message;
+
     const {
       history,
       sendOrderRequest,
@@ -190,6 +210,11 @@ export class CheckoutPageComponent extends Component {
       speculatedTransaction,
       dispatch,
     } = this.props;
+
+    const cleaningFeeLineItem = speculatedTransaction.attributes.lineItems.filter(
+      item => item.code === LINE_ITEM_CLEANING_FEE
+    )[0];
+    const cleaningFee = cleaningFeeLineItem ? cleaningFeeLineItem.unitPrice : null;
 
     // Create order aka transaction
     // NOTE: if unit type is line-item/units, quantity needs to be added.
@@ -199,6 +224,7 @@ export class CheckoutPageComponent extends Component {
       cardToken,
       bookingStart: speculatedTransaction.booking.attributes.start,
       bookingEnd: speculatedTransaction.booking.attributes.end,
+      cleaningFee,
     });
 
     const enquiredTransaction = this.state.pageData.enquiredTransaction;
